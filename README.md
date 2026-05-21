@@ -146,4 +146,4 @@ Each layer is independently licensable. Vera is the foundation every subsequent 
 
 Circle builds inference silicon IP for agentic AI workloads. Business model: hard IP block licensing to SoC vendors and AI chip startups, via upfront license fees and per-unit royalties. Pre-incorporation — founder stage.
 
-Contact: [your email]
+Contact: anubhavgpta@outlook.com
