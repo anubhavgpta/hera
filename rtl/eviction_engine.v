@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-// Vera -- Eviction Engine
+// Hera -- Eviction Engine
 //
 // Tracks approximate per-page access frequency and scans all physical pages
 // when memory is almost full.  The minimum counter page is reported to host

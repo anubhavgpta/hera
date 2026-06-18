@@ -1,8 +1,16 @@
 `timescale 1ns/1ps
-// Vera -- Top-Level Paged KV Cache Controller
+// Hera -- Top-Level Paged KV Cache Controller
 //
 // Integrates allocator, block table, read/write engine, AXI4-Lite control,
 // prefetch controller, eviction engine, and four internal SRAM banks.
+//
+// Security hardening:
+//   Quota enforcement: alloc is denied when a session exceeds
+//   max_pages_per_session (0 = unlimited).  Denial sets quota_exceeded.
+//   Zero-on-free: evicted pages are scrubbed to zero by rw_engine before
+//   being returned to the free list, preventing cross-session data leakage.
+//   Session isolation and AXI access control are enforced in rw_engine and
+//   axi4_lite_if respectively.
 
 module kv_cache_ctrl #(
     parameter TOTAL_PAGES      = 256,
@@ -61,14 +69,29 @@ module kv_cache_ctrl #(
     input        evict_ack
 );
 
-    localparam KV_WIDTH = DATA_WIDTH * HEAD_DIM;
+    // ------------------------------------------------------------------
+    // Parameter guards -- simulation will abort on violation
+    // ------------------------------------------------------------------
+    initial begin
+        if (TOTAL_PAGES > 256)
+            $error("kv_cache_ctrl: TOTAL_PAGES > 256 exceeds allocator address width");
+        if (NUM_SESSIONS > 8)
+            $error("kv_cache_ctrl: NUM_SESSIONS > 8 exceeds 3-bit session_id encoding");
+        if (SRAM_BANKS != 4)
+            $error("kv_cache_ctrl: SRAM_BANKS must be 4 for this implementation");
+    end
+
+    // Silicon watermark -- same constant as axi4_lite_if for cross-check
+    localparam [31:0] HERA_IP_ID = 32'h48455241; // ASCII "HERA"
+
+    localparam KV_WIDTH   = DATA_WIDTH * HEAD_DIM;
     localparam SRAM_WIDTH = KV_WIDTH * 2;
 
-    localparam WR_IDLE      = 3'd0;
+    localparam WR_IDLE       = 3'd0;
     localparam WR_ALLOC_WAIT = 3'd2;
     localparam WR_TABLE_WAIT = 3'd3;
-    localparam WR_START_RW  = 3'd4;
-    localparam WR_WAIT_RW   = 3'd5;
+    localparam WR_START_RW   = 3'd4;
+    localparam WR_WAIT_RW    = 3'd5;
 
     wire global_enable;
     wire soft_reset;
@@ -113,8 +136,10 @@ module kv_cache_ctrl #(
     (* ram_style = "block" *) reg [KV_WIDTH-1:0] sram_k_mem3 [0:511];
     (* ram_style = "block" *) reg [KV_WIDTH-1:0] sram_v_mem3 [0:511];
 
+    // Eviction engine free outputs -- intercepted by scrub FSM
     wire evict_free_req;
     wire [7:0] evict_free_page_id;
+
     reg [2:0] page_session_map [255:0];
 
     wire pf_req;
@@ -125,6 +150,9 @@ module kv_cache_ctrl #(
     wire [4:0] pf_buf_page [1:0];
     wire [2:0] pf_buf_sess [1:0];
 
+    // ------------------------------------------------------------------
+    // Write FSM state
+    // ------------------------------------------------------------------
     reg [2:0] wr_state;
     reg [2:0] wr_sess_hold;
     reg [11:0] wr_token_hold;
@@ -135,8 +163,45 @@ module kv_cache_ctrl #(
 
     wire [4:0] wr_logical_page = wr_token_pos / PAGE_SIZE_TOKENS;
 
+    // ------------------------------------------------------------------
+    // Session quota tracking
+    // ------------------------------------------------------------------
+    reg [7:0] pages_per_session [0:NUM_SESSIONS-1];
+    reg quota_exceeded_latch;
+
+    // ------------------------------------------------------------------
+    // Security fault latch (from rw_engine isolation check)
+    // ------------------------------------------------------------------
+    wire rw_sec_fault;
+    reg sec_fault_latch;
+
+    // ------------------------------------------------------------------
+    // Zero-on-free scrub FSM
+    // evict_free_req is intercepted here; block_allocator.free_req is
+    // only pulsed after rw_engine confirms the page is zeroed.
+    // ------------------------------------------------------------------
+    localparam SCRUB_IDLE = 2'd0;
+    localparam SCRUB_BUSY = 2'd1;
+
+    reg [1:0] scrub_state;
+    reg [7:0] scrub_page_hold;
+    reg scrub_req_r;
+    wire scrub_done;
+
+    // Delayed free signals to block_allocator
+    reg alloc_free_req_r;
+    reg [7:0] alloc_free_page_r;
+
+    // rw_engine scrub connections
+    wire scrub_req_w  = scrub_req_r;
+    wire [7:0] scrub_page_w = scrub_page_hold;
+
     integer i;
     integer j;
+
+    // ------------------------------------------------------------------
+    // Sub-module instances
+    // ------------------------------------------------------------------
 
     axi4_lite_if #(
         .NUM_SESSIONS(NUM_SESSIONS),
@@ -167,6 +232,8 @@ module kv_cache_ctrl #(
         .evict_pending_i(evict_valid),
         .evict_page_id_i(evict_page_id),
         .evict_session_id_i(evict_session_id),
+        .quota_exceeded_i(quota_exceeded_latch),
+        .sec_fault_i(sec_fault_latch),
         .global_enable(global_enable),
         .soft_reset(soft_reset),
         .active_session_id(active_session_id),
@@ -183,8 +250,8 @@ module kv_cache_ctrl #(
         .alloc_session_id(alloc_session_id),
         .alloc_ack(alloc_ack),
         .alloc_page_id(alloc_page_id),
-        .free_req(evict_free_req),
-        .free_page_id(evict_free_page_id),
+        .free_req(alloc_free_req_r),
+        .free_page_id(alloc_free_page_r),
         .pages_free(pages_free),
         .pages_used(pages_used),
         .almost_full(almost_full)
@@ -243,7 +310,12 @@ module kv_cache_ctrl #(
         .sram_we(sram_we),
         .sram_addr(sram_addr),
         .sram_wdata(sram_wdata),
-        .sram_rdata(sram_rdata)
+        .sram_rdata(sram_rdata),
+        .page_session_map(page_session_map),
+        .scrub_req(scrub_req_w),
+        .scrub_page_id(scrub_page_w),
+        .scrub_done(scrub_done),
+        .sec_fault(rw_sec_fault)
     );
 
     prefetch_ctrl #(
@@ -282,6 +354,9 @@ module kv_cache_ctrl #(
         .page_session_map(page_session_map)
     );
 
+    // ------------------------------------------------------------------
+    // SRAM banks
+    // ------------------------------------------------------------------
     always @(posedge clk) begin
         if (sram_ce[0]) begin
             if (sram_we[0]) begin
@@ -317,6 +392,9 @@ module kv_cache_ctrl #(
         end
     end
 
+    // ------------------------------------------------------------------
+    // Prefetch ack (one-cycle delay)
+    // ------------------------------------------------------------------
     always @(posedge clk or negedge internal_rst_n) begin
         if (!internal_rst_n) begin
             pf_ack <= 1'b0;
@@ -325,25 +403,84 @@ module kv_cache_ctrl #(
         end
     end
 
+    // ------------------------------------------------------------------
+    // Security fault latch
+    // Set on rw_engine sec_fault pulse; cleared only by reset.
+    // ------------------------------------------------------------------
     always @(posedge clk or negedge internal_rst_n) begin
         if (!internal_rst_n) begin
-            wr_state         <= WR_IDLE;
-            wr_ack           <= 1'b0;
-            alloc_req        <= 1'b0;
-            alloc_session_id <= 3'd0;
-            bt_wr_en         <= 1'b0;
-            bt_wr_session    <= 3'd0;
-            bt_wr_logical    <= 5'd0;
-            bt_wr_physical   <= 8'd0;
-            rw_wr_req        <= 1'b0;
-            wr_sess_hold     <= 3'd0;
-            wr_token_hold    <= 12'd0;
-            wr_k_hold        <= {KV_WIDTH{1'b0}};
-            wr_v_hold        <= {KV_WIDTH{1'b0}};
-            wr_logical_hold  <= 5'd0;
-            for (i = 0; i < NUM_SESSIONS; i = i + 1)
+            sec_fault_latch <= 1'b0;
+        end else begin
+            if (rw_sec_fault)
+                sec_fault_latch <= 1'b1;
+        end
+    end
+
+    // ------------------------------------------------------------------
+    // Zero-on-free scrub FSM
+    // Intercepts evict_free_req, triggers rw_engine scrub, then pulses
+    // block_allocator.free_req only after scrub_done.
+    // ------------------------------------------------------------------
+    always @(posedge clk or negedge internal_rst_n) begin
+        if (!internal_rst_n) begin
+            scrub_state       <= SCRUB_IDLE;
+            scrub_req_r       <= 1'b0;
+            scrub_page_hold   <= 8'd0;
+            alloc_free_req_r  <= 1'b0;
+            alloc_free_page_r <= 8'd0;
+        end else begin
+            alloc_free_req_r <= 1'b0;
+
+            case (scrub_state)
+                SCRUB_IDLE: begin
+                    scrub_req_r <= 1'b0;
+                    if (evict_free_req) begin
+                        scrub_page_hold <= evict_free_page_id;
+                        scrub_req_r     <= 1'b1;
+                        scrub_state     <= SCRUB_BUSY;
+                    end
+                end
+
+                SCRUB_BUSY: begin
+                    scrub_req_r <= 1'b1; // held until rw_engine accepts
+                    if (scrub_done) begin
+                        scrub_req_r      <= 1'b0;
+                        alloc_free_req_r <= 1'b1;
+                        alloc_free_page_r <= scrub_page_hold;
+                        scrub_state      <= SCRUB_IDLE;
+                    end
+                end
+
+                default: scrub_state <= SCRUB_IDLE;
+            endcase
+        end
+    end
+
+    // ------------------------------------------------------------------
+    // Write FSM + quota enforcement + page tracking
+    // ------------------------------------------------------------------
+    always @(posedge clk or negedge internal_rst_n) begin
+        if (!internal_rst_n) begin
+            wr_state              <= WR_IDLE;
+            wr_ack                <= 1'b0;
+            alloc_req             <= 1'b0;
+            alloc_session_id      <= 3'd0;
+            bt_wr_en              <= 1'b0;
+            bt_wr_session         <= 3'd0;
+            bt_wr_logical         <= 5'd0;
+            bt_wr_physical        <= 8'd0;
+            rw_wr_req             <= 1'b0;
+            wr_sess_hold          <= 3'd0;
+            wr_token_hold         <= 12'd0;
+            wr_k_hold             <= {KV_WIDTH{1'b0}};
+            wr_v_hold             <= {KV_WIDTH{1'b0}};
+            wr_logical_hold       <= 5'd0;
+            quota_exceeded_latch  <= 1'b0;
+            for (i = 0; i < NUM_SESSIONS; i = i + 1) begin
                 for (j = 0; j < 32; j = j + 1)
                     page_valid[i][j] <= 1'b0;
+                pages_per_session[i] <= 8'd0;
+            end
             for (i = 0; i < TOTAL_PAGES; i = i + 1)
                 page_session_map[i] <= 3'd0;
         end else begin
@@ -352,8 +489,13 @@ module kv_cache_ctrl #(
             bt_wr_en  <= 1'b0;
             rw_wr_req <= 1'b0;
 
-            if (evict_free_req)
+            // Decrement session quota on eviction
+            if (evict_free_req) begin
+                if (pages_per_session[page_session_map[evict_free_page_id]] > 8'd0)
+                    pages_per_session[page_session_map[evict_free_page_id]] <=
+                        pages_per_session[page_session_map[evict_free_page_id]] - 1'b1;
                 page_session_map[evict_free_page_id] <= 3'd0;
+            end
 
             case (wr_state)
                 WR_IDLE: begin
@@ -366,9 +508,16 @@ module kv_cache_ctrl #(
                         if (page_valid[wr_session_id][wr_logical_page]) begin
                             wr_state <= WR_START_RW;
                         end else begin
-                            alloc_session_id <= wr_session_id;
-                            alloc_req        <= 1'b1;
-                            wr_state         <= WR_ALLOC_WAIT;
+                            // Quota check: 0 means unlimited
+                            if (max_pages_per_session == 8'd0 ||
+                                pages_per_session[wr_session_id] < max_pages_per_session) begin
+                                alloc_session_id <= wr_session_id;
+                                alloc_req        <= 1'b1;
+                                wr_state         <= WR_ALLOC_WAIT;
+                            end else begin
+                                quota_exceeded_latch <= 1'b1;
+                                wr_state             <= WR_IDLE; // drop write
+                            end
                         end
                     end
                 end
@@ -381,6 +530,8 @@ module kv_cache_ctrl #(
                         bt_wr_physical <= alloc_page_id;
                         page_valid[wr_sess_hold][wr_logical_hold] <= 1'b1;
                         page_session_map[alloc_page_id] <= wr_sess_hold;
+                        pages_per_session[wr_sess_hold] <=
+                            pages_per_session[wr_sess_hold] + 1'b1;
                         wr_state <= WR_TABLE_WAIT;
                     end
                 end

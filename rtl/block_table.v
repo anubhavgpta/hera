@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-// Vera -- Logical-to-Physical Page Mapping Table
+// Hera -- Logical-to-Physical Page Mapping Table
 //
 // Address space: {session_id[2:0], logical_page[4:0]} ??' 8-bit flat index.
 // page_data  : LUTRAM (distributed RAM, no reset -- valid bit gates all reads).

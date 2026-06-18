@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-// Vera -- Sequential Read Prefetch Controller
+// Hera -- Sequential Read Prefetch Controller
 //
 // Snoops rw_engine read requests, detects per-session page-boundary
 // sequential access, and requests prefetches into a two-entry buffer.

@@ -1,12 +1,12 @@
 # =============================================================================
-# Vera -- Vivado 2018.2 project setup + simulation runner
+# Hera -- Vivado 2018.2 project setup + simulation runner
 # Plain ASCII, no BOM.
 #
 # Source from Vivado Tcl console:
-#   source {C:/Users/Anubhav Gupta/Desktop/Projects/vera/sim/setup_project.tcl}
+#   source {C:/Users/Anubhav Gupta/Desktop/Projects/hera/sim/setup_project.tcl}
 # =============================================================================
 
-set ROOT {C:/Users/Anubhav Gupta/Desktop/Projects/vera}
+set ROOT {C:/Users/Anubhav Gupta/Desktop/Projects/hera}
 
 # Configure xsim to run until $finish (not a fixed time window).
 # This prevents the watchdog initial block from firing after the main
@@ -56,7 +56,7 @@ if {[llength [get_files -quiet [list $xdc]]] == 0} {
     puts "Already in project: timing.xdc"
 }
 
-# Some Vera files use SystemVerilog syntax while retaining .v names.
+# Some Hera files use SystemVerilog syntax while retaining .v names.
 foreach f {rtl/rw_engine.v tb/tb_rw_engine.v rtl/axi4_lite_if.v tb/tb_axi4_lite_if.v rtl/prefetch_ctrl.v rtl/eviction_engine.v tb/tb_prefetch_eviction.v rtl/kv_cache_ctrl.v tb/tb_kv_cache_ctrl.v} {
     set p "$ROOT/$f"
     set_property file_type SystemVerilog [get_files [list $p]]
