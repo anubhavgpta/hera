@@ -42,8 +42,8 @@ Designed for agentic AI workloads where multiple concurrent sessions share on-ch
 | Default SRAM footprint | 1 MB |
 | Host interface | AXI4-Lite, 32-bit |
 | Target clock | 100 MHz |
-| Timing (Artix-7 xc7a35t) | WNS +2.13 ns, WHS +0.076 ns -- all constraints met |
-| BRAM utilization | 87 RAMB18 tiles (87% of xc7a35t, scales to Alveo U50) |
+| Timing (Artix-7 xc7a100t) | WNS +2.079 ns, WHS +0.205 ns -- all constraints met, Fmax ≈ 126 MHz |
+| BRAM utilization | 116 / 135 tiles (85.9% of xc7a100t at full parameters) |
 | Verification | 102 / 102 xsim checks passing |
 
 ---
@@ -112,20 +112,23 @@ The LOCK register (`0x1C[0]`) is sticky: once set to 1, it survives soft_reset a
 
 ---
 
-## Synthesis Results (Artix-7 xc7a35tcpg236-1)
+## Synthesis Results (Artix-7 xc7a100tcsg324-1, 100 MHz)
+
+Out-of-context synthesis with Vivado 2018.2. Default parameters: 256 pages, 16 tokens/page, 8 sessions, HEAD\_DIM=64, DATA\_WIDTH=16.
 
 ```
-Timing:   WNS = +2.131 ns  (setup, 100 MHz -- met)
-          WHS = +0.076 ns  (hold -- met)
-          Failing endpoints: 0
+Timing:   WNS = +2.079 ns  (setup, 100 MHz -- met, 0 failing endpoints)
+          WHS = +0.205 ns  (hold -- met)
+          Max frequency: ~126 MHz
 
-LUT (Logic):   8,229 / 20,800   (39.6%)
-Flip-Flops:   17,186 / 41,600   (41.3%)
-BRAM Tiles:       43.5 / 50     (87.0%)
-DSPs:              0 / 90       (0%)
+Resource          Used     Available   Utilisation
+Slice LUTs       10,191     63,400       16.07 %
+Slice Registers  12,533    126,800        9.88 %
+Block RAM Tiles     116        135       85.93 %
+DSPs                  0        240        0.00 %
 ```
 
-> The Artix-7 xc7a35t is a validation device. LUTRAM overflow (due to 256-page table + LRU counters) is expected at full parameters. Production deployment targets Alveo U50 / UltraScale+ xcku5p. BRAM and LUTRAM scale linearly with `TOTAL_PAGES` and `HEAD_DIM` -- reduce parameters for Artix-7 fit validation.
+> **BRAM note:** 116 of 135 BRAM tiles on the xc7a100t are consumed at full parameters (256 pages × 16 tokens × HEAD\_DIM=64 × 16-bit). Embedding Hera in a larger design on Artix-7 leaves limited BRAM headroom. For production LLM accelerators, target Alveo U50 / UltraScale+ xcku5p where BRAM capacity is 2-10× larger. BRAM and LUTRAM usage scale linearly with `TOTAL_PAGES × HEAD_DIM`.
 
 ---
 
