@@ -182,7 +182,7 @@ class hera_security_vseq extends hera_vseq_base;
 
         // ---- Quota enforcement ----------------------------------------
         // Max 2 pages per session; each page = 16 tokens
-        set_quota(8'd2);
+        set_quota(2);
 
         void'(std::randomize(k)); void'(std::randomize(v));
         kv_write(3'd0, 12'd0,  k, v); // page 0 of sess 0 -- allocated OK

@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 // AXI4-Lite interface for Hera host control port
 interface hera_axi4_lite_if (input logic clk, input logic rst_n);
     logic        awvalid;

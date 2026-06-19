@@ -15,7 +15,7 @@ class hera_kv_rd_seq_item extends uvm_sequence_item;
     hera_kv_beat_t beats[$];
     bit            timed_out;
 
-    constraint c_session { session_id < 3'd8; }
+    constraint c_session { session_id < 8; }
     constraint c_range {
         token_start < 12'd512;
         token_end   >= token_start;

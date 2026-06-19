@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 // Eviction offload interface
 interface hera_evict_if (input logic clk);
     logic       evict_valid;

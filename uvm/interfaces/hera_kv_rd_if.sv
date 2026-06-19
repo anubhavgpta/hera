@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 // KV read interface — burst response via rd_valid/rd_last
 interface hera_kv_rd_if #(parameter KV_W = 1024) (input logic clk);
     logic            rd_req;

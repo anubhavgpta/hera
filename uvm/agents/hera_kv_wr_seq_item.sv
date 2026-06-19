@@ -10,7 +10,7 @@ class hera_kv_wr_seq_item extends uvm_sequence_item;
     bit ack_received;
 
     // 32 logical pages * 16 tokens = 512 token positions per session
-    constraint c_session { session_id < 3'd8; }
+    constraint c_session { session_id < 8; }
     constraint c_token   { token_pos  < 12'd512; }
 
     function new(string name = "hera_kv_wr_seq_item");

@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 // KV write interface — DATA_WIDTH(16)*HEAD_DIM(64) = 1024-bit data
 interface hera_kv_wr_if #(parameter KV_W = 1024) (input logic clk);
     logic           wr_req;

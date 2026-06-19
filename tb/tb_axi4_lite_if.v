@@ -33,6 +33,8 @@ module tb_axi4_lite_if;
     reg        evict_pending_i;
     reg  [7:0] evict_page_id_i;
     reg  [2:0] evict_session_id_i;
+    reg        quota_exceeded_i;
+    reg        sec_fault_i;
 
     wire       global_enable;
     wire       soft_reset;
@@ -69,6 +71,8 @@ module tb_axi4_lite_if;
         .evict_pending_i(evict_pending_i),
         .evict_page_id_i(evict_page_id_i),
         .evict_session_id_i(evict_session_id_i),
+        .quota_exceeded_i(quota_exceeded_i),
+        .sec_fault_i(sec_fault_i),
         .global_enable(global_enable),
         .soft_reset(soft_reset),
         .active_session_id(active_session_id),
@@ -179,6 +183,8 @@ module tb_axi4_lite_if;
         evict_pending_i = 1'b0;
         evict_page_id_i = 8'd0;
         evict_session_id_i = 3'd0;
+        quota_exceeded_i = 1'b0;
+        sec_fault_i = 1'b0;
 
         rst_n = 1'b0;
         repeat (4) @(posedge clk);
