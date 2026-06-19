@@ -1,11 +1,30 @@
+# Vivado / xsim simulation build artifacts
+xsim.dir/
+*.wdb
 *.jou
-*.log
 *.pb
+*.log
 *.str
-.Xil/
-hera.cache/
-hera.hw/
-hera.ip_user_files/
-hera.runs/
-hera.sim/
-.claude/
+
+# Simulation output directories
+sim_*/
+
+# Vivado project files
+*.xpr
+*.xsa
+*.bit
+*.ltx
+*.runs/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.srcs/
+
+# Vivado backup
+*.bak
+*.backup.log
+
+# OS
+.DS_Store
+Thumbs.db
