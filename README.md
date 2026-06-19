@@ -172,14 +172,16 @@ The full synthesis script is provided at [`synth_hera.tcl`](synth_hera.tcl) for 
 
 ## Simulation
 
-The testbench targets Vivado xsim 2018.2 and requires no external dependencies.
+The testbench requires Vivado 2018.2 (xsim) and no other dependencies. Adjust `VIVADO_BIN` at the top of the script if Vivado is installed to a different path.
 
-```
+```bat
 cd sim
-vivado -mode batch -source run_sim.tcl
+run_xsim.bat
 ```
 
-Or step by step from the `sim/` directory using the provided shell scripts. Each test prints per-check `PASS` / `FAIL` lines and a final summary. All 41 checks pass on the reference run.
+This compiles all RTL and the SystemVerilog testbench, elaborates, and runs to completion. Each check prints `PASS` or `FAIL` inline; a summary box is printed at the end. Expected result: **41 / 41 PASS**.
+
+The log is written to `sim/hera_sim.log`.
 
 ---
 
