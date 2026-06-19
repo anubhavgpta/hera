@@ -31,6 +31,14 @@ synth_hera*.backup.jou
 *.bak
 *.backup.log
 
+# LaTeX build artifacts
+docs/*.aux
+docs/*.out
+docs/*.pdf
+docs/*.synctex.gz
+docs/*.fls
+docs/*.fdb_latexmk
+
 # OS
 .DS_Store
 Thumbs.db
