@@ -412,7 +412,7 @@ module tb_sv_top;
     endtask
 
     // ----------------------------------------------------------------
-    // T2: Stress -- 64 directed writes across 4 sessions, verify reads
+    // T2: Stress -- 128 directed writes across all 8 sessions, verify reads
     // ----------------------------------------------------------------
     task run_stress_test();
         logic [1:0]    bresp;
@@ -422,7 +422,7 @@ module tb_sv_top;
 
         $display("");
         $display("╔══════════════════════════════════════════╗");
-        $display("║  TEST 2: Stress (64 writes, 8 reads)     ║");
+        $display("║  TEST 2: Stress (128 writes, 16 reads)   ║");
         $display("╚══════════════════════════════════════════╝");
 
         // Re-enable (soft-reset clears state from T1)
@@ -432,15 +432,17 @@ module tb_sv_top;
         axi_write(32'h00, 32'h1, bresp); // re-enable
         sb.init(); cov.init();
 
-        for (int i = 0; i < 64; i++) begin
+        // 128 writes: 16 per session across all 8 sessions.
+        // Use i[2:0] to pick session so xsim never narrows the cast.
+        // Pattern: write page 0 token 0 for every session first (i=0..7),
+        // then page 1 token 0 (i=8..15), etc.
+        for (int i = 0; i < 128; i++) begin
             logic [2:0]  sess;
             logic [11:0] tok;
-            int          page, off;
-            sess = logic'(i % 4);
-            page = (i / 4) % 8;
-            off  = i % 4;
-            tok  = logic'(page * 16 + off);
-            // Distinct recognisable pattern per slot
+            int          page;
+            sess = i[2:0];                 // sessions 0-7, unambiguous 3-bit
+            page = (i / 8) % 8;            // 8 logical pages per session
+            tok  = 12'(page * 16);         // token 0 of each page
             for (int w = 0; w < 32; w++) begin
                 k[w*32 +: 32] = {16'hCAFE, 8'(i), 8'(w)};
                 v[w*32 +: 32] = {16'hBEEF, 8'(sess), 8'(tok)};
@@ -448,13 +450,26 @@ module tb_sv_top;
             kv_write(sess, tok, k, v);
         end
 
-        // Spot-check 8 of the written slots
+        // Spot-check token 0 of page 0 from each of the 8 sessions
         errors_before = sb.sb_fails;
-        for (int i = 0; i < 8; i++) begin
+        for (int s = 0; s < 8; s++) begin
             logic [2:0]  sess;
             logic [11:0] tok;
-            sess = logic'(i % 4);
-            tok  = logic'((i % 8) * 16 + (i % 4));
+            sess = s[2:0];
+            tok  = 12'd0;   // page 0, token 0 — written for every session above
+            kv_read_single(sess, tok, k_rd, v_rd, tmo);
+            chk(!tmo, $sformatf("Stress read-back sess=%0d tok=%0d no timeout",
+                                 sess, tok));
+            sb.check_rd_beat(sess, tok, k_rd, v_rd,
+                $sformatf("stress rb sess=%0d tok=%0d", sess, tok));
+        end
+
+        // Second pass: token 0 of page 1 from each of the 8 sessions
+        for (int s = 0; s < 8; s++) begin
+            logic [2:0]  sess;
+            logic [11:0] tok;
+            sess = s[2:0];
+            tok  = 12'd16;  // page 1, token 0 — written at i=8..15 above
             kv_read_single(sess, tok, k_rd, v_rd, tmo);
             chk(!tmo, $sformatf("Stress read-back sess=%0d tok=%0d no timeout",
                                  sess, tok));
@@ -463,7 +478,7 @@ module tb_sv_top;
         end
 
         chk(sb.sb_fails == errors_before, "All stress read-backs match scoreboard");
-        $display("  INFO: 64 writes, 8 read-backs completed");
+        $display("  INFO: 128 writes, 16 read-backs across 8 sessions completed");
     endtask
 
     // ----------------------------------------------------------------
@@ -479,8 +494,11 @@ module tb_sv_top;
         $display("║  TEST 3: Security                        ║");
         $display("╚══════════════════════════════════════════╝");
 
-        // Fresh enable (new test after soft-reset in stress)
-        axi_write(32'h00, 32'h1, bresp);
+        // Soft reset to clear page_valid/quota state from stress test,
+        // then wait for block_allocator 256-cycle re-init before re-enabling.
+        axi_write(32'h00, 32'h2, bresp); // soft reset
+        repeat(270) @(posedge clk);
+        axi_write(32'h00, 32'h1, bresp); // re-enable
 
         // 3a. Quota enforcement: max 2 pages per session
         axi_write(32'h08, 32'h02, bresp);  // PAGE_CFG = 2
