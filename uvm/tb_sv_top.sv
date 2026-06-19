@@ -393,7 +393,7 @@ module tb_sv_top;
 
         // 1e. STATUS register -- pages_free should be < 256 after 1 write
         axi_read(32'h10, rdata);
-        // pages_free: count=256 (full) wraps to 8'h00; after 1 alloc = 8'hFF
+        // pages_free: count=256 saturates to 0xFF; after 1 alloc count=255 -> 0xFF
         chk(rdata[7:0] != 8'h00, $sformatf(
             "STATUS pages_free=%0d (decremented after write)", rdata[7:0]));
 
@@ -589,7 +589,7 @@ module tb_sv_top;
         axi_read(32'h10, rdata);
         $display("  INFO: Pre-reset  STATUS=0x%08h  pages_free=%0d",
                  rdata, rdata[7:0]);
-        // pages_free wraps: 256 free = 0x00, 255 free = 0xFF; after 1 alloc != 0x00
+        // pages_free: 256 free = 0xFF (saturated), 255 free = 0xFF, ..., 0 free = 0x00
         chk(rdata[7:0] != 8'h00, "pages_free decremented before soft reset");
 
         // Soft reset
@@ -604,9 +604,9 @@ module tb_sv_top;
         axi_read(32'h10, rdata);
         $display("  INFO: Post-reset STATUS=0x%08h  pages_free=%0d",
                  rdata, rdata[7:0]);
-        // After full re-init: count=256 wraps to 0x00 (all 256 pages free)
-        chk(rdata[7:0] == 8'h00, $sformatf(
-            "pages_free restored after soft reset (0x%02h == 0x00 = 256 free)",
+        // After full re-init: count=256 saturates to 0xFF (all 256 pages free)
+        chk(rdata[7:0] == 8'hFF, $sformatf(
+            "pages_free restored after soft reset (0x%02h == 0xFF = 256 free)",
             rdata[7:0]));
 
         // Token written before reset should now return zero-on-free

@@ -21,7 +21,7 @@ module block_allocator #(
     input       [7:0] free_page_id,
 
     // Status
-    output      [7:0] pages_free,         // 256 free -> 8'h00 (modular wrap)
+    output      [7:0] pages_free,         // saturates at 8'hFF when count==256
     output      [7:0] pages_used,
     output            almost_full         // asserted when pages_free <= 16
 );
@@ -52,8 +52,8 @@ module block_allocator #(
     // ----------------------------------------------------------------
     // Derived outputs
     // ----------------------------------------------------------------
-    assign pages_free  = count[7:0];           // 256 -> 8'h00 by truncation
-    assign pages_used  = (9'd256 - count);     // [7:0], same wrap at extremes
+    assign pages_free  = count[8] ? 8'hFF : count[7:0];       // saturate: 256 -> 0xFF
+    assign pages_used  = count[8] ? 8'h00 : (9'd256 - count); // 0 used when all free
     assign almost_full = init_done && (count <= 9'd16);
 
     // ----------------------------------------------------------------
