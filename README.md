@@ -55,6 +55,26 @@ Designed for agentic AI workloads where multiple concurrent sessions share on-ch
 | BRAM utilization | 116 / 135 tiles (85.9 % of xc7a100t at full parameters) |
 | Verification | 41 / 41 checks passing (Vivado xsim 2018.2) |
 
+> **BRAM budget:** at default parameters (256 pages, HEAD\_DIM = 64) Hera consumes 116 of 135 BRAM tiles on the xc7a100t, leaving ≈ 14 % for the rest of the design. Scale parameters down for Artix-7 integration, or target a device with more BRAM capacity. See the [scaling table](#bram-scaling) below.
+
+---
+
+## BRAM Scaling
+
+BRAM consumption grows linearly with `TOTAL_PAGES × HEAD_DIM`. The table below gives representative tile counts on xc7a100t (135 tiles available).
+
+| `TOTAL_PAGES` | `HEAD_DIM` | SRAM footprint | BRAM tiles (est.) | xc7a100t utilisation |
+|---|---|---|---|---|
+| 64 | 32 | 128 KB | ~29 | ~21 % |
+| 128 | 64 | 512 KB | ~58 | ~43 % |
+| 256 | 64 | 1 MB | ~116 | ~86 % |
+| 512 | 64 | 2 MB | ~232 | > 100 % — target UltraScale+ |
+| 256 | 128 | 2 MB | ~232 | > 100 % — target UltraScale+ |
+
+For production LLM accelerators, target **Alveo U50** or **UltraScale+ xcku5p** (2–10× the BRAM capacity of Artix-7). The full register interface, timing characteristics, and parameter API are device-independent.
+
+See [`docs/register_map.md`](docs/register_map.md) for the complete register reference.
+
 ---
 
 ## Module Overview
@@ -105,6 +125,8 @@ The `LOCK` register (`0x1C[0]`) is sticky: once written to 1, it survives soft r
 ---
 
 ## Register Map
+
+Full bit-field descriptions, reset values, and initialisation sequence are in [`docs/register_map.md`](docs/register_map.md).
 
 | Address | Name | Access | Description |
 |---|---|---|---|
