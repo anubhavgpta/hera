@@ -499,7 +499,7 @@ module kv_cache_ctrl #(
 
             case (wr_state)
                 WR_IDLE: begin
-                    if (global_enable && wr_req) begin
+                    if (global_enable && wr_req && !wr_ack) begin
                         wr_sess_hold    <= wr_session_id;
                         wr_token_hold   <= wr_token_pos;
                         wr_k_hold       <= wr_k_data;
